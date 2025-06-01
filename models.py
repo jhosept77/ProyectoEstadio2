@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 
 
+
 #=================================================================================================================================================================================================
 
 
@@ -28,11 +29,12 @@ class Silla(SQLModel, table=True):
 
 
 
+
 class CompraRequest(SQLModel):
-    zona: str
-    dia: int
-    cantidad: int
-    usuario_id: int
+    zona: str = Field(description="Zona: VIP o General")
+    dia: int = Field(ge=1, le=2, description="Día del evento: 1 o 2")
+    cantidad: int = Field(gt=0, description="Cantidad de sillas a comprar")
+    usuario_id: Optional[int] = Field(default=None, description="ID del usuario que compra (opcional)")
 
 
 

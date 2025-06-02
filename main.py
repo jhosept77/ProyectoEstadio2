@@ -138,25 +138,39 @@ from typing import Optional
 from models import CompraRequest, Usuario, Silla
 from database import get_session
 
-PRECIOS = {
+from fastapi import HTTPException, Depends
+from sqlmodel import Session, select
+from models import CompraRequest, Usuario, Silla
+from database import get_session
+
+
+PRECIOS_ORIGINALES = {
     "VIP": {1: 500000, 2: 500000},
-    "General": {1: 300000, 2: 190000}
+    "General": {1: 300000, 2: 300000}
 }
+
+
+DESCUENTOS = {
+    "VIP": {1: 0.0, 2: 0.0},
+    "General": {1: 0.0, 2: 0.3667}
+}
+
 
 @app.post("/comprar")
 def comprar(request: CompraRequest, session: Session = Depends(get_session)):
 
  
-    if request.zona not in PRECIOS or request.dia not in PRECIOS[request.zona]:
+    if request.zona not in PRECIOS_ORIGINALES or request.dia not in PRECIOS_ORIGINALES[request.zona]:
         raise HTTPException(status_code=400, detail="Zona o día inválido")
 
-   
+
     usuario = None
     if request.usuario_id is not None:
         usuario = session.get(Usuario, request.usuario_id)
         if not usuario:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
+ 
     sillas_disponibles = session.exec(
         select(Silla)
         .where(
@@ -170,7 +184,7 @@ def comprar(request: CompraRequest, session: Session = Depends(get_session)):
     if len(sillas_disponibles) < request.cantidad:
         raise HTTPException(status_code=400, detail="No hay suficientes sillas disponibles")
 
-   
+    
     for silla in sillas_disponibles:
         silla.estado = "vendido"
         silla.comprado_por = usuario.id if usuario else None
@@ -178,9 +192,20 @@ def comprar(request: CompraRequest, session: Session = Depends(get_session)):
 
     session.commit()
 
+ 
+    precio_original = PRECIOS_ORIGINALES[request.zona][request.dia]
+    descuento = DESCUENTOS[request.zona][request.dia]
+    precio_con_descuento = int(precio_original * (1 - descuento))
+    total = precio_con_descuento * request.cantidad
+
   
-    precio_unitario = PRECIOS[request.zona][request.dia]
-    total = precio_unitario * request.cantidad
+    if descuento == 0.0:
+        if request.zona == "VIP":
+            descuento_porcentaje = "No aplica (VIP no tiene descuento)"
+        else:
+            descuento_porcentaje = "0% (día sin descuento)"
+    else:
+        descuento_porcentaje = f"{descuento * 100:.2f}%"
 
     return {
         "mensaje": "Compra realizada con éxito",
@@ -192,35 +217,14 @@ def comprar(request: CompraRequest, session: Session = Depends(get_session)):
         "zona": request.zona,
         "dia": request.dia,
         "cantidad": request.cantidad,
-        "precio_unitario": precio_unitario,
+        "precio_original": precio_original,
+        "precio_con_descuento": precio_con_descuento,
+        "descuento_aplicado": descuento_porcentaje,
         "total": total,
         "sillas_compradas": [
             {"id": s.id, "numero": s.numero, "fila": s.fila} for s in sillas_disponibles
         ]
     }
-
-
-
-
-
-
-#=================================================================================================================================================================================================
-
-
-
-
-
-
-@app.get("/sillas/disponibles")
-def sillas_disponibles(zona: Optional[str] = None):
-    with Session(engine) as session:
-        query = select(Silla).where(Silla.estado == "disponible")
-        if zona:
-            query = query.where(Silla.zona == zona)
-        sillas = session.exec(query).all()
-        return {"cantidad": len(sillas), "sillas": sillas}
-    
-
 
 
 

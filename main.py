@@ -137,40 +137,38 @@ from sqlmodel import Session, select
 from typing import Optional
 from models import CompraRequest, Usuario, Silla
 from database import get_session
-
 from fastapi import HTTPException, Depends
-from sqlmodel import Session, select
-from models import CompraRequest, Usuario, Silla
-from database import get_session
+from models import CompraRequest, Usuario, Silla, Sincronizacion
 
 
-PRECIOS_ORIGINALES = {
-    "VIP": {1: 500000, 2: 500000},
-    "General": {1: 300000, 2: 300000}
-}
 
 
-DESCUENTOS = {
-    "VIP": {1: 0.0, 2: 0.0},
-    "General": {1: 0.0, 2: 0.3667}
-}
 
 
 @app.post("/comprar")
 def comprar(request: CompraRequest, session: Session = Depends(get_session)):
-
  
+    PRECIOS_ORIGINALES = {
+        "VIP": {1: 500000, 2: 500000},
+        "General": {1: 300000, 2: 300000}
+    }
+
+    DESCUENTOS = {
+        "VIP": {1: 0.0, 2: 0.0},
+        "General": {1: 0.0, 2: 0.3667}
+    }
+
     if request.zona not in PRECIOS_ORIGINALES or request.dia not in PRECIOS_ORIGINALES[request.zona]:
         raise HTTPException(status_code=400, detail="Zona o día inválido")
 
-
+  
     usuario = None
     if request.usuario_id is not None:
         usuario = session.get(Usuario, request.usuario_id)
         if not usuario:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
- 
+
     sillas_disponibles = session.exec(
         select(Silla)
         .where(
@@ -184,28 +182,31 @@ def comprar(request: CompraRequest, session: Session = Depends(get_session)):
     if len(sillas_disponibles) < request.cantidad:
         raise HTTPException(status_code=400, detail="No hay suficientes sillas disponibles")
 
-    
+   
+    def registrar_sincronizacion(session: Session, silla_id: int, usuario_id: Optional[int]):
+        sincronizacion = Sincronizacion(silla_id=silla_id, usuario_id=usuario_id)
+        session.add(sincronizacion)
+
+ 
     for silla in sillas_disponibles:
         silla.estado = "vendido"
         silla.comprado_por = usuario.id if usuario else None
         session.add(silla)
+        registrar_sincronizacion(session, silla.id, usuario.id if usuario else None)
 
     session.commit()
 
- 
+   
     precio_original = PRECIOS_ORIGINALES[request.zona][request.dia]
     descuento = DESCUENTOS[request.zona][request.dia]
     precio_con_descuento = int(precio_original * (1 - descuento))
     total = precio_con_descuento * request.cantidad
 
-  
-    if descuento == 0.0:
-        if request.zona == "VIP":
-            descuento_porcentaje = "No aplica (VIP no tiene descuento)"
-        else:
-            descuento_porcentaje = "0% (día sin descuento)"
-    else:
-        descuento_porcentaje = f"{descuento * 100:.2f}%"
+    descuento_porcentaje = (
+        f"{descuento * 100:.2f}%"
+        if descuento > 0 else
+        ("No aplica (VIP no tiene descuento)" if request.zona == "VIP" else "0% (día sin descuento)")
+    )
 
     return {
         "mensaje": "Compra realizada con éxito",
@@ -225,6 +226,7 @@ def comprar(request: CompraRequest, session: Session = Depends(get_session)):
             {"id": s.id, "numero": s.numero, "fila": s.fila} for s in sillas_disponibles
         ]
     }
+
 
 
 
@@ -374,7 +376,66 @@ def actualizar_usuario(
 
 
 
+
+
 @app.get("/usuarios/", response_model=List[Usuario])
 def listar_usuarios(session: Session = Depends(get_session)):
     usuarios = session.exec(select(Usuario)).all()
     return usuarios
+
+
+
+
+
+
+
+#=================================================================================================================================================================================================
+
+
+
+
+
+
+
+
+from typing import Optional
+
+@app.get("/sillas/disponibles")
+def sillas_disponibles(zona: Optional[str] = None):
+    with Session(engine) as session:
+        query = select(Silla).where(Silla.estado == "disponible")
+        if zona:
+            query = query.where(Silla.zona == zona)
+        sillas = session.exec(query).all()
+        return {
+            "cantidad": len(sillas),
+            "sillas": [
+                {"id": s.id, "zona": s.zona, "fila": s.fila, "numero": s.numero, "dia": s.dia}
+                for s in sillas
+            ]
+        }
+
+
+
+
+
+
+
+
+
+
+from fastapi import APIRouter, Depends
+from sqlmodel import Session, select
+from database import get_session
+from models import Sincronizacion
+
+@app.get("/sincronizaciones")
+def ver_sincronizaciones(session: Session = Depends(get_session)):
+    sincronizadas = session.exec(select(Sincronizacion)).all()
+    return [
+        {
+            "silla_id": s.silla_id,
+            "usuario_id": s.usuario_id,
+            "fecha": s.fecha.isoformat()
+        } for s in sincronizadas
+    ]

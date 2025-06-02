@@ -1,7 +1,7 @@
 from typing import Optional
 from sqlmodel import SQLModel, Field
 from pydantic import BaseModel
-
+from datetime import datetime
 
 
 
@@ -50,3 +50,29 @@ class Usuario(SQLModel, table=True):
     nombre: str
     apellido: str
     zona: str
+
+
+
+
+#=================================================================================================================================================================================================
+
+
+
+
+
+
+
+class Sincronizacion(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    silla_id: int
+    usuario_id: Optional[int] = None
+    fecha: datetime = Field(default_factory=datetime.utcnow)
+
+
+
+
+
+
+
+
+

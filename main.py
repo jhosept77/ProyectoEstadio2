@@ -354,8 +354,9 @@ def actualizar_usuario(
         usuario.nombre = usuario_actualizado.nombre
     if usuario_actualizado.apellido is not None:
         usuario.apellido = usuario_actualizado.apellido
-    if usuario_actualizado.zona is not None:
-        usuario.zona = usuario_actualizado.zona
+    if usuario_actualizado.cedula is not None:
+        usuario.cedula = usuario_actualizado.cedula
+
 
     session.add(usuario)
     session.commit()

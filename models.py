@@ -49,7 +49,8 @@ class Usuario(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     nombre: str
     apellido: str
-    zona: str
+    cedula: str
+
 
 
 
